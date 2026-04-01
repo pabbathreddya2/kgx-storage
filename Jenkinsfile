@@ -71,32 +71,32 @@ pipeline {
                 }
             }
         }
-        // stage('Deploy to AWS EKS Blue') {
-        //     agent {
-        //         label 'translator && ci && deploy'
-        //     }
-        //     steps {
-        //         script {
-        //             configFileProvider([
-        //                 configFile(fileId: 'values-kgx-storage-ci.yaml', targetLocation: 'values-ncats.yaml'),
-        //                 configFile(fileId: 'prepare.sh', targetLocation: 'prepare.sh')
-        //             ]){
-        //                 sh '''
-        //                 aws --region ${AWS_REGION} eks update-kubeconfig --name ${KUBERNETES_BLUE_CLUSTER_NAME}
-        //                 /bin/bash prepare.sh
-        //                 cd translator-ops/ops/kgx-storage/
-        //                 /bin/bash deploy.sh
-        //                 '''
-        //             }
-        //         }
-        //     }
-        //     post {
-        //         always {
-        //             echo "Clean up the workspace in deploy node!"
-        //             cleanWs()
-        //         }
-        //     }
-        // }
+        stage('Deploy to AWS EKS Blue') {
+            agent {
+                label 'translator && ci && deploy'
+            }
+            steps {
+                script {
+                    configFileProvider([
+                        configFile(fileId: 'values-kgx-storage-ci.yaml', targetLocation: 'values-ncats.yaml'),
+                        configFile(fileId: 'prepare.sh', targetLocation: 'prepare.sh')
+                    ]){
+                        sh '''
+                        aws --region ${AWS_REGION} eks update-kubeconfig --name ${KUBERNETES_BLUE_CLUSTER_NAME}
+                        /bin/bash prepare.sh
+                        cd translator-ops/ops/kgx-storage/
+                        /bin/bash deploy.sh
+                        '''
+                    }
+                }
+            }
+            post {
+                always {
+                    echo "Clean up the workspace in deploy node!"
+                    cleanWs()
+                }
+            }
+        }
     }
     post {
         success {
