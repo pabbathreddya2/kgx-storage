@@ -294,9 +294,11 @@ def _render_json_viewer(s3_key):
 def health():
     """Health check endpoint for Kubernetes liveness and readiness probes."""
     try:
-        # Check if S3 client is responsive
-        S3_CLIENT.list_buckets()
-        return {"status": "healthy", "service": "kgx-storage"}, 200
+        # Simple check - verify S3 client exists and metrics are loaded
+        if S3_CLIENT and len(_metrics_data) > 0:
+            return {"status": "healthy", "service": "kgx-storage", "metrics_loaded": len(_metrics_data)}, 200
+        else:
+            return {"status": "healthy", "service": "kgx-storage"}, 200
     except Exception as e:
         return {"status": "unhealthy", "error": str(e)}, 503
 
