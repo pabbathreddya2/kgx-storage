@@ -13,10 +13,10 @@ from botocore.exceptions import ClientError
 from pathlib import Path
 
 app = Flask(__name__)
-BUCKET_NAME = "translator-ingests"
+BUCKET_NAME = os.environ.get("BUCKET_NAME", "kgx-translator-ingests")
 S3_CLIENT = boto3.client("s3")
 PUBLIC_DIR = Path(__file__).parent / "public"
-METRICS_FILE = Path(__file__).parent / "metrics.json"
+METRICS_FILE = Path(os.environ.get("METRICS_FILE", Path(__file__).parent / "metrics.json"))
 
 # Load precomputed metrics
 _metrics_data = {}
@@ -288,6 +288,17 @@ def _render_json_viewer(s3_key):
         )
     except ClientError as e:
         return f"Error loading file: {e}", 500
+
+
+@app.route("/health")
+def health():
+    """Health check endpoint for Kubernetes liveness and readiness probes."""
+    try:
+        # Check if S3 client is responsive
+        S3_CLIENT.list_buckets()
+        return {"status": "healthy", "service": "kgx-storage"}, 200
+    except Exception as e:
+        return {"status": "unhealthy", "error": str(e)}, 503
 
 
 @app.route("/docs")

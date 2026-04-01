@@ -1,0 +1,75 @@
+---
+# CronJob to update metrics every hour
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: kgx-storage-metrics-update
+  namespace: kgx-storage
+  labels:
+    app: kgx-storage
+    component: metrics
+spec:
+  schedule: "0 * * * *"  # Every hour at minute 0
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      template:
+        metadata:
+          labels:
+            app: kgx-storage
+            component: metrics
+        spec:
+          serviceAccountName: kgx-storage-sa
+          restartPolicy: OnFailure
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 1000
+            fsGroup: 1000
+          
+          containers:
+          - name: compute-metrics
+            image: REPLACE_WITH_YOUR_ECR_IMAGE  # Same as deployment
+            command: 
+            - /bin/sh
+            - -c
+            - |
+              echo "Starting metrics computation..."
+              python compute_metrics.py
+              echo "Metrics computed successfully"
+              
+              # Copy metrics to shared volume if using PVC
+              # Or trigger a deployment rollout to reload metrics
+              # kubectl rollout restart deployment/kgx-storage -n kgx-storage
+            
+            envFrom:
+            - configMapRef:
+                name: kgx-storage-config
+            
+            env:
+            - name: METRICS_FILE
+              value: "/app/data/metrics.json"
+            
+            volumeMounts:
+            - name: metrics-data
+              mountPath: /app/data
+            
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+            
+            securityContext:
+              allowPrivilegeEscalation: false
+              readOnlyRootFilesystem: false
+              capabilities:
+                drop:
+                - ALL
+          
+          volumes:
+          - name: metrics-data
+            emptyDir: {}

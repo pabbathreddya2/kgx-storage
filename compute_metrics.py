@@ -11,12 +11,13 @@ Usage:
 
 import boto3
 import json
+import os
 import time
 from datetime import datetime
 from pathlib import Path
 
-BUCKET_NAME = "translator-ingests"
-METRICS_FILE = Path(__file__).parent / "metrics.json"
+BUCKET_NAME = os.environ.get("BUCKET_NAME", "kgx-translator-ingests")
+METRICS_FILE = Path(os.environ.get("METRICS_FILE", Path(__file__).parent / "metrics.json"))
 S3_CLIENT = boto3.client("s3")
 
 

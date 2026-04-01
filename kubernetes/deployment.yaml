@@ -1,0 +1,137 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: kgx-storage
+  namespace: kgx-storage
+  labels:
+    app: kgx-storage
+    version: v1
+spec:
+  replicas: 2  # Adjust based on traffic needs
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: kgx-storage
+  template:
+    metadata:
+      labels:
+        app: kgx-storage
+        version: v1
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "5000"
+        prometheus.io/path: "/metrics"
+    spec:
+      serviceAccountName: kgx-storage-sa
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      
+      # Init container to compute metrics before app starts
+      initContainers:
+      - name: compute-metrics
+        image: REPLACE_WITH_YOUR_ECR_IMAGE  # e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/kgx-storage:latest
+        command: ["python", "compute_metrics.py"]
+        envFrom:
+        - configMapRef:
+            name: kgx-storage-config
+        volumeMounts:
+        - name: metrics-data
+          mountPath: /app/data
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      
+      containers:
+      - name: kgx-storage
+        image: REPLACE_WITH_YOUR_ECR_IMAGE  # e.g., 123456789012.dkr.ecr.us-east-1.amazonaws.com/kgx-storage:latest
+        imagePullPolicy: Always
+        ports:
+        - name: http
+          containerPort: 5000
+          protocol: TCP
+        
+        envFrom:
+        - configMapRef:
+            name: kgx-storage-config
+        
+        env:
+        - name: METRICS_FILE
+          value: "/app/data/metrics.json"
+        
+        volumeMounts:
+        - name: metrics-data
+          mountPath: /app/data
+        
+        # Liveness probe - restart if unhealthy
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 30
+          timeoutSeconds: 10
+          failureThreshold: 3
+        
+        # Readiness probe - don't send traffic if not ready
+        readinessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        # Startup probe - give app time to start
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 10
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 12  # 2 minutes to start
+        
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1000m"
+        
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: false  # Set to true if you move metrics to volume
+          capabilities:
+            drop:
+            - ALL
+      
+      volumes:
+      - name: metrics-data
+        emptyDir: {}
+      
+      # Spread pods across different nodes for high availability
+      affinity:
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: app
+                  operator: In
+                  values:
+                  - kgx-storage
+              topologyKey: kubernetes.io/hostname
