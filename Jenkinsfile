@@ -62,12 +62,6 @@ pipeline {
                     echo "Logging into ECR..."
                     aws ecr get-login-password --region ${AWS_REGION} | docker login --username AWS --password-stdin ${ECR_REGISTRY}
                     
-                    # Create ECR repository if it doesn't exist
-                    aws ecr describe-repositories --repository-names ${ECR_REPOSITORY} --region ${AWS_REGION} || \
-                        aws ecr create-repository --repository-name ${ECR_REPOSITORY} --region ${AWS_REGION} \
-                            --image-scanning-configuration scanOnPush=true \
-                            --encryption-configuration encryptionType=AES256
-                    
                     echo "Pushing images to ECR..."
                     docker push ${IMAGE_NAME}:${BUILD_VERSION}
                     docker push ${IMAGE_NAME}:latest
