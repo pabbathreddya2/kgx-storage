@@ -84,6 +84,7 @@ pipeline {
                         sh '''
                         aws --region ${AWS_REGION} eks update-kubeconfig --name ${KUBERNETES_BLUE_CLUSTER_NAME}
                         /bin/bash prepare.sh
+                        cp values-ncats.yaml translator-ops/ops/kgx-storage/
                         cd translator-ops/ops/kgx-storage/
                         /bin/bash deploy.sh
                         '''
