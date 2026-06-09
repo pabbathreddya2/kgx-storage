@@ -1,7 +1,7 @@
 """
 Web server for browsing and downloading S3 bucket contents.
 
-Run this on the EC2 instance to serve files via http://kgx-storage.rtx.ai
+Run this on the EC2 instance to serve files via https://kgx-storage.ci.transltr.io
 """
 
 import boto3
@@ -9,6 +9,8 @@ import json
 import os
 from datetime import timezone
 from flask import Flask, render_template_string, request, redirect, send_from_directory, Response
+from botocore import UNSIGNED
+from botocore.config import Config
 from botocore.exceptions import ClientError
 from pathlib import Path
 
@@ -16,7 +18,22 @@ from metrics_path_rules import exclude_key_for_folder_modified_date
 
 app = Flask(__name__)
 BUCKET_NAME = "translator-ingests"
-S3_CLIENT = boto3.client("s3")
+SITE_URL = "https://kgx-storage.ci.transltr.io"
+TRANSLATOR_KG_OPEN_PATH = "releases/translator_kg_open/"
+
+
+def _use_anonymous_s3() -> bool:
+    """Use unsigned S3 requests for local dev without AWS credentials."""
+    return os.environ.get("KGX_ANONYMOUS_S3", "").lower() in ("1", "true", "yes")
+
+
+def _create_s3_client():
+    if _use_anonymous_s3():
+        return boto3.client("s3", config=Config(signature_version=UNSIGNED))
+    return boto3.client("s3")
+
+
+S3_CLIENT = _create_s3_client()
 PUBLIC_DIR = Path(__file__).parent / "public"
 METRICS_FILE = Path(__file__).parent / "metrics.json"
 
@@ -222,6 +239,14 @@ def get_breadcrumbs(path):
     return breadcrumbs
 
 
+def is_translator_kg_internal_path(path: str) -> bool:
+    """True when browsing releases/translator_kg (not translator_kg_open)."""
+    normalized = path.rstrip("/")
+    if normalized == "releases/translator_kg":
+        return True
+    return normalized.startswith("releases/translator_kg/")
+
+
 def browse_directory(path):
     """Shared function to browse a directory path."""
     # Ensure path ends with / for directories
@@ -248,7 +273,9 @@ def browse_directory(path):
             total_size=format_size(total_size),
             total_files=total_files,
             folder_count=len(folders),
-            file_count=len(files)
+            file_count=len(files),
+            show_translator_kg_notice=is_translator_kg_internal_path(path),
+            translator_kg_open_url=f"/{TRANSLATOR_KG_OPEN_PATH}",
         )
     except ClientError as e:
         return f"Error: {e}", 500
@@ -303,7 +330,7 @@ def _render_json_viewer(s3_key):
 @app.route("/docs")
 def docs():
     """Documentation page for file access."""
-    return render_template_string(DOCS_TEMPLATE, bucket=BUCKET_NAME)
+    return render_template_string(DOCS_TEMPLATE, bucket=BUCKET_NAME, site_url=SITE_URL)
 
 
 @app.route("/public/<path:filename>")
@@ -571,6 +598,27 @@ HTML_TEMPLATE = """
             background: #f8f8fa;
             border-bottom: 1px solid var(--border);
         }
+        .info-banner {
+            background: #fffbeb;
+            border: 1px solid #fcd34d;
+            border-radius: 8px;
+            padding: 16px 20px;
+            margin-bottom: 20px;
+            font-size: 0.9em;
+            line-height: 1.6;
+            color: #78350f;
+        }
+        .info-banner strong {
+            color: #92400e;
+        }
+        .info-banner a {
+            color: var(--accent);
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .info-banner a:hover {
+            text-decoration: underline;
+        }
         footer {
             background: var(--surface);
             border-top: 1px solid var(--border);
@@ -670,6 +718,15 @@ HTML_TEMPLATE = """
                 <span>{{ total_size }} total</span>
             </div>
         </div>
+
+        {% if show_translator_kg_notice %}
+        <div class="info-banner">
+            <strong>Internal use only.</strong>
+            This merged knowledge graph is for NCATS Translator internal use and must not be distributed.
+            To download the publicly shareable merged graph, visit
+            <a href="{{ translator_kg_open_url }}">translator_kg_open</a>.
+        </div>
+        {% endif %}
 
         <div class="tree">
             <div class="tree-header">
@@ -957,7 +1014,7 @@ JSON_VIEWER_TEMPLATE = """
             // Highlight different JSON elements
             text = text.replace(/"([^"]+)":/g, '<span class="json-key">"$1"</span>:');
             text = text.replace(/: "([^"]*)"/g, ': <span class="json-string">"$1"</span>');
-            text = text.replace(/: (-?\d+\.?\d*)/g, ': <span class="json-number">$1</span>');
+            text = text.replace(/: (-?\\d+\\.?\\d*)/g, ': <span class="json-number">$1</span>');
             text = text.replace(/: (true|false)/g, ': <span class="json-boolean">$1</span>');
             text = text.replace(/: (null)/g, ': <span class="json-null">$1</span>');
 
@@ -1147,21 +1204,21 @@ DOCS_TEMPLATE = """
         <p class="intro">Download knowledge graph files via HTTPS or S3. Both methods are publicly accessible without authentication.</p>
 
         <h2>URL behavior</h2>
-        <p>File URLs use the path to the file (e.g. <code>https://kgx-storage.rtx.ai/releases/alliance/latest/graph-metadata.json</code>). Requesting that URL returns the file: JSON is returned as the response body, other formats trigger a download.</p>
+        <p>File URLs use the path to the file (e.g. <code>{{ site_url }}/releases/alliance/latest/graph-metadata.json</code>). Requesting that URL returns the file: JSON is returned as the response body, other formats trigger a download.</p>
         <p>For JSON files, appending <code>?view</code> to the same URL (e.g. <code>.../graph-metadata.json?view</code>) opens the HTML viewer in the browser instead of raw JSON. Only <code>?view</code> is significant; other query parameters are ignored. Redirects use the canonical path with no query string.</p>
         <p>Directory URLs use a trailing slash (e.g. <code>.../latest/</code>). If you request a directory path without a trailing slash, you are redirected to the same path with a trailing slash. Paths that are neither a file nor a directory return 404.</p>
 
         <h2>HTTPS Download</h2>
         
         <div class="cmd-label">Single File</div>
-        <div class="cmd-block" onclick="copy(this)">curl -fL -O "https://kgx-storage.rtx.ai/releases/go_cam/latest/go_cam.tar.zst"</div>
+        <div class="cmd-block" onclick="copy(this)">curl -fL -O "{{ site_url }}/releases/go_cam/latest/go_cam.tar.zst"</div>
         <p class="note">Replace go_cam with your source name</p>
         
         <div class="cmd-label">Specific Version</div>
-        <div class="cmd-block" onclick="copy(this)">curl -fL -O "https://kgx-storage.rtx.ai/data/ctd/November_2025/1.0/normalization_2025sep1/merged_nodes.jsonl"</div>
+        <div class="cmd-block" onclick="copy(this)">curl -fL -O "{{ site_url }}/data/ctd/May_2026/transform_1adbe97e/normalization_2025sep1_2.4.1_1.4.0_conflated_strict/merge_2.0.0/merged_nodes.jsonl"</div>
         
         <div class="cmd-label">With wget</div>
-        <div class="cmd-block" onclick="copy(this)">wget "https://kgx-storage.rtx.ai/releases/alliance/latest/alliance.tar.zst"</div>
+        <div class="cmd-block" onclick="copy(this)">wget "{{ site_url }}/releases/alliance/latest/alliance.tar.zst"</div>
         
         <h2>Understanding curl Flags</h2>
         <p style="margin-bottom: 16px;">The recommended curl command uses <code>-fL</code> flags to ensure reliable file downloads:</p>
@@ -1231,4 +1288,7 @@ DOCS_TEMPLATE = """
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=False)
+    port = int(os.environ.get("PORT", "5000"))
+    if _use_anonymous_s3():
+        print("Using anonymous S3 access (KGX_ANONYMOUS_S3=1)")
+    app.run(host="0.0.0.0", port=port, debug=False)
