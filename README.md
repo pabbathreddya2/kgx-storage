@@ -2,7 +2,7 @@
 
 A website for browsing and downloading KGX (Knowledge Graph Exchange) files from S3. No AWS login needed.
 
-Live site: https://kgx-storage.rtx.ai
+Live site: https://kgx-storage.ci.transltr.io
 
 ## Summary
 
@@ -23,7 +23,7 @@ Important paths:
 - Nginx config: copy `nginx-config` from the repo to `/etc/nginx/sites-available/kgx-storage`
 - The metrics cache is `metrics.json` in the app folder. The script `compute_metrics.py` creates it. The script `update_metrics.sh` can run in cron to refresh it and tell Gunicorn to reload.
 
-Setup in short: Clone the repo. Make a Python venv and install from requirements.txt. Run `sudo ./setup-webserver-service.sh`. Set up Nginx using the repo’s nginx-config. Run certbot for kgx-storage.rtx.ai. Run `compute_metrics.py` once so the site has folder stats. Optionally add a cron job for `update_metrics.sh`. The EC2 instance needs an IAM role that can read from S3, and the domain must point to the instance’s IP.
+Setup in short: Clone the repo. Make a Python venv and install from requirements.txt. Run `sudo ./setup-webserver-service.sh`. Set up Nginx using the repo’s nginx-config. Run certbot for kgx-storage.ci.transltr.io. Run `compute_metrics.py` once so the site has folder stats. Optionally add a cron job for `update_metrics.sh`. The EC2 instance needs an IAM role that can read from S3, and the domain must point to the instance’s IP.
 
 ## Overview
 
@@ -66,7 +66,7 @@ You need:
 - An EC2 instance (Ubuntu or Debian). Something like t3.medium (2 vCPU, 4 GB RAM) is enough. It needs systemd.
 - An IAM role on that instance with permission to read from the bucket: `s3:GetObject` and `s3:ListBucket` on `translator-ingests`.
 - An Elastic IP so the instance has a fixed public IP.
-- The domain kgx-storage.rtx.ai pointing at that IP (DNS A record).
+- The domain kgx-storage.ci.transltr.io pointing at that IP (DNS A record).
 - Security group open for: 22 (SSH), 80 (HTTP, for certbot and redirect), 443 (HTTPS).
 
 Software on the server:
@@ -134,7 +134,7 @@ Nginx now proxies to the Flask app. The default site is removed so port 80 is fr
 ### 6. HTTPS with Let's Encrypt
 
 ```bash
-sudo certbot --nginx -d kgx-storage.rtx.ai
+sudo certbot --nginx -d kgx-storage.ci.transltr.io
 sudo certbot renew --dry-run
 ```
 
@@ -165,7 +165,7 @@ This builds `metrics.json` with folder sizes and file counts. The web app reads 
 ### 9. Check that it works
 
 ```bash
-curl -I https://kgx-storage.rtx.ai
+curl -I https://kgx-storage.ci.transltr.io
 ```
 
 You want a 200 or 302. That means Nginx, SSL, and the app are all working.
@@ -323,22 +323,46 @@ No write actions. Credentials come from the instance metadata, not from the code
 To run the app locally without Nginx or systemd:
 
 ```bash
-cd /home/ubuntu/kgx-storage-webserver
+cd kgx-storage
+python3 -m venv .venv
 source .venv/bin/activate
-python web_server.py
+pip install -r requirements.txt
 ```
 
-Then open http://localhost:5000. This is single-threaded and not for production. Use it to test changes.
+**Docs page only** (no S3 needed):
+
+```bash
+python web_server.py
+# open http://localhost:5000/docs
+```
+
+**Full browse UI** (folder listings, translator_kg banner, JSON viewer) without AWS credentials:
+
+The `translator-ingests` bucket allows public read. Enable anonymous S3 in the app:
+
+```bash
+KGX_ANONYMOUS_S3=1 PORT=5001 python web_server.py
+```
+
+Then open http://localhost:5001/. Use `PORT=5001` on macOS if port 5000 is taken by AirPlay Receiver.
+
+Paths to spot-check UI changes:
+
+- http://localhost:5001/docs
+- http://localhost:5001/releases/translator_kg/
+- http://localhost:5001/releases/translator_kg_open/
+
+Without `KGX_ANONYMOUS_S3=1`, browse pages need AWS credentials (as on the EC2 instance). This dev server is single-threaded and not for production.
 
 ## Production URLs and downloads
 
-Site: https://kgx-storage.rtx.ai
+Site: https://kgx-storage.ci.transltr.io
 
-- Home: https://kgx-storage.rtx.ai
-- Folders: https://kgx-storage.rtx.ai/releases/alliance/latest/ (and similar paths; trailing slash lists the folder)
-- File (canonical): https://kgx-storage.rtx.ai/releases/alliance/latest/graph-metadata.json — returns the file (JSON as response body, other types trigger download)
-- JSON viewer: same path with `?view`, e.g. https://kgx-storage.rtx.ai/releases/alliance/latest/graph-metadata.json?view — shows the HTML viewer
-- Docs: https://kgx-storage.rtx.ai/docs
+- Home: https://kgx-storage.ci.transltr.io
+- Folders: https://kgx-storage.ci.transltr.io/releases/alliance/latest/ (and similar paths; trailing slash lists the folder)
+- File (canonical): https://kgx-storage.ci.transltr.io/releases/alliance/latest/graph-metadata.json — returns the file (JSON as response body, other types trigger download)
+- JSON viewer: same path with `?view`, e.g. https://kgx-storage.ci.transltr.io/releases/alliance/latest/graph-metadata.json?view — shows the HTML viewer
+- Docs: https://kgx-storage.ci.transltr.io/docs
 
 Old links with `?path=...` redirect to the path-style URL. Legacy `/view/` and `/download/` URLs are no longer supported (404).
 
@@ -347,7 +371,7 @@ Old links with `?path=...` redirect to the path-style URL. Legacy `/view/` and `
 Use the canonical file URL with curl or wget. Always use the `-fL` flags with curl to ensure reliable downloads:
 
 ```bash
-curl -fL -O "https://kgx-storage.rtx.ai/releases/alliance/latest/alliance.tar.zst"
+curl -fL -O "https://kgx-storage.ci.transltr.io/releases/alliance/latest/alliance.tar.zst"
 ```
 
 The flags:
@@ -360,7 +384,7 @@ Without `-L`, curl saves redirect responses instead of the actual file. Without 
 For wget, redirects are followed by default and errors return non-zero exit codes, so the basic command is sufficient:
 
 ```bash
-wget "https://kgx-storage.rtx.ai/releases/alliance/latest/alliance.tar.zst"
+wget "https://kgx-storage.ci.transltr.io/releases/alliance/latest/alliance.tar.zst"
 ```
 
 Examples and more commands are on the /docs page.
@@ -377,7 +401,7 @@ If you have credentials that can read the bucket, you can use `aws s3 cp` and `a
 
 **Metadata and external consistency**
 
-Use the canonical URL format for any reference to kgx-storage files: path only (e.g. `https://kgx-storage.rtx.ai/releases/alliance/latest/graph-metadata.json`), with optional `?view` for the JSON viewer. Metadata files (e.g. graph-metadata.json), DAWG, or other systems that publish or consume kgx-storage URLs should use this format so "URL in metadata" matches "URL in app" and links work the same everywhere. For version checks (e.g. "is there a new release?"), using metadata (e.g. `release_version` in latest-release.json or `url`/`id` in graph-metadata.json) is more reliable than relying only on the Last-Modified HTTP header.
+Use the canonical URL format for any reference to kgx-storage files: path only (e.g. `https://kgx-storage.ci.transltr.io/releases/alliance/latest/graph-metadata.json`), with optional `?view` for the JSON viewer. Metadata files (e.g. graph-metadata.json), DAWG, or other systems that publish or consume kgx-storage URLs should use this format so "URL in metadata" matches "URL in app" and links work the same everywhere. For version checks (e.g. "is there a new release?"), using metadata (e.g. `release_version` in latest-release.json or `url`/`id` in graph-metadata.json) is more reliable than relying only on the Last-Modified HTTP header.
 
 **Edge cases**
 
