@@ -36,6 +36,7 @@ def _create_s3_client():
 S3_CLIENT = _create_s3_client()
 PUBLIC_DIR = Path(__file__).parent / "public"
 METRICS_FILE = Path(os.environ.get("METRICS_FILE", Path(__file__).parent / "metrics.json"))
+TRANSLATOR_KG_OPEN_PATH = "releases/translator_kg_open"
 
 # Load precomputed metrics
 _metrics_data = {}
