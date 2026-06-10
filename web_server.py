@@ -21,6 +21,7 @@ BUCKET_NAME = os.environ.get("BUCKET_NAME", "kgx-translator-ingests")
 S3_CLIENT = boto3.client("s3")
 PUBLIC_DIR = Path(__file__).parent / "public"
 METRICS_FILE = Path(os.environ.get("METRICS_FILE", Path(__file__).parent / "metrics.json"))
+TRANSLATOR_KG_OPEN_PATH = "releases/translator_kg_open"
 
 # Load precomputed metrics
 _metrics_data = {}
